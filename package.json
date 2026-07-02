@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Scrape an ecommerce store and mass-generate product images/videos through the Higgsfield web UI (unlimited plan) via browser automation.",
   "description": "Scrape a store or image folder and mass-generate product images & videos through the Higgsfield web UI (unlimited plan) via browser automation.",
   "author": "bensblueprints",
   "license": "MIT",
@@ -28,10 +27,20 @@
   "build": {
     "appId": "co.advancedmarketing.higgsfield-autopilot",
     "productName": "Higgsfield Autopilot",
-    "directories": { "output": "release", "buildResources": "build" },
-    "files": ["electron/**/*", "src/**/*", "node_modules/**/*", "package.json"],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "src/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "build/icon.ico"
     },
     "nsis": {
