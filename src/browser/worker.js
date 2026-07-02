@@ -264,37 +264,54 @@ async function attachReference(page, form, kind, filePath) {
     await sleep(4000); // upload
     return;
   }
-  // Video: try dropping onto the "Upload media" zone first (no native picker).
-  const zone = form.getByText(/upload media/i).first();
-  if (await zone.count()) {
-    await dropFileOnto(page, zone, filePath);
-    await sleep(6000);
-    const thumb = await form.locator('div[class*="grid-cols"] img, figure img').count();
-    if (thumb) {
-      log('  reference attached via drop');
-      return;
-    }
-    log('  ! drop produced no thumbnail — falling back to picker');
+  // Video: /ai/video has NO persistent file input. Clicking the upload box
+  // (div.bg-neutral-surface-subtle) opens a media-library MODAL. We upload the
+  // file into the modal's input, then must SELECT the new asset back into the
+  // form. This flow is non-hanging (no native dialog is triggered) — if the
+  // select step doesn't take, we throw a clear error so the job is marked
+  // failed and the run continues instead of hanging.
+  const box = await form.locator('div.bg-neutral-surface-subtle').first().boundingBox();
+  if (!box) throw new Error('Video upload box not found (div.bg-neutral-surface-subtle).');
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await sleep(2500); // media modal opens
+
+  const srcsBefore = await page.evaluate(() =>
+    [...document.querySelectorAll('img')].map((i) => i.src).filter((s) => s.startsWith('http')),
+  );
+  const modalInput = page.locator('input[type="file"]').first();
+  if (!(await modalInput.count())) throw new Error('Media modal file input not found.');
+  await modalInput.setInputFiles(filePath);
+
+  // Wait for the uploaded asset to appear (diff against pre-upload set).
+  let newSrc = null;
+  for (let i = 0; i < 20 && !newSrc; i++) {
+    await sleep(1500);
+    const now = await page.evaluate(() =>
+      [...document.querySelectorAll('img')].map((im) => im.src).filter((s) => s.startsWith('http')),
+    );
+    newSrc = now.find((s) => !srcsBefore.includes(s)) || null;
   }
-  // Video: fresh form shows an "Upload media" drop zone. Clicking it opens the
-  // OS file chooser (no persistent file input). Once an image is attached the
-  // zone turns into a grid of thumbnail slots with a "+" add button.
-  const uploadZone = form.getByText(/upload media/i).first();
-  const plusBtn = form.locator('div[class*="grid-cols"] button').last();
-  const target = (await uploadZone.count()) ? uploadZone : plusBtn;
-  const chooserPromise = page.waitForEvent('filechooser', { timeout: 12000 }).catch(() => null);
-  await target.click();
-  const chooser = await chooserPromise;
-  if (chooser) {
-    await chooser.setFiles(filePath);
-  } else {
-    const modalInput = page.locator('input[type="file"]').last();
-    if (!(await modalInput.count())) throw new Error('No file chooser or upload input found for reference image.');
-    await modalInput.setInputFiles(filePath);
-  }
-  await sleep(6000); // upload
+  if (!newSrc) throw new Error('Uploaded video reference did not appear in the media modal (upload flaky).');
+
+  // Real-click the new asset tile to select it into the form.
+  const rect = await page.evaluate((src) => {
+    const img = [...document.querySelectorAll('img')].find((i) => i.src === src);
+    if (!img) return null;
+    const t = img.closest('button,[role=button],div');
+    const r = t.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  }, newSrc);
+  if (rect) await page.mouse.click(rect.x, rect.y);
+  await sleep(2000);
+  const confirm = page.getByRole('button', { name: /^(add|select|use|confirm|done)$/i }).first();
+  if (await confirm.isVisible().catch(() => false)) await confirm.click();
+  await sleep(4000);
+
   const hasThumb = await form.locator('div[class*="grid-cols"] img, figure img').count();
-  if (!hasThumb) log('  ! warning: reference thumbnail not detected after upload');
+  if (!hasThumb) {
+    throw new Error('Video reference uploaded but could not be selected into the form (modal asset-select TODO).');
+  }
+  log('  reference attached via media modal');
 }
 
 /**
