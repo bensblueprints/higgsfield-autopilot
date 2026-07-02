@@ -17,6 +17,7 @@ function createWindow() {
     height: 840,
     backgroundColor: '#0a0a0b',
     title: 'Higgsfield Autopilot',
+    icon: path.join(__dirname, '..', 'build', 'icon.ico'),
     webPreferences: { preload: path.join(__dirname, 'preload.cjs') },
   });
   win.setMenuBarVisibility(false);
