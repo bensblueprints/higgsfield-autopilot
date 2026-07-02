@@ -1,0 +1,46 @@
+{
+  "name": "higgsfield-autopilot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Scrape an ecommerce store and mass-generate product images/videos through the Higgsfield web UI (unlimited plan) via browser automation.",
+  "description": "Scrape a store or image folder and mass-generate product images & videos through the Higgsfield web UI (unlimited plan) via browser automation.",
+  "author": "bensblueprints",
+  "license": "MIT",
+  "main": "electron/main.js",
+  "scripts": {
+    "login": "node src/login.js",
+    "scrape": "node src/run.js --scrape-only",
+    "start": "node src/run.js",
+    "app": "electron .",
+    "icon": "python build/make_icon.py",
+    "dist": "electron-builder --win"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "commander": "^12.1.0",
+    "playwright": "^1.49.0"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "co.advancedmarketing.higgsfield-autopilot",
+    "productName": "Higgsfield Autopilot",
+    "directories": { "output": "release", "buildResources": "build" },
+    "files": ["electron/**/*", "src/**/*", "node_modules/**/*", "package.json"],
+    "win": {
+      "target": ["nsis"],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Higgsfield Autopilot"
+    }
+  }
+}

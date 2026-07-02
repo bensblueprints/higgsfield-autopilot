@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Higgsfield Autopilot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+      body { background: #0a0a0b; }
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 4px; }
+    </style>
+  </head>
+  <body class="text-zinc-200">
+    <div id="root"></div>
+    <script type="text/babel" data-presets="react">
+      const { useState, useEffect, useRef, useCallback } = React;
+
+      const STATUS_COLORS = {
+        pending: 'bg-zinc-600',
+        submitted: 'bg-amber-500',
+        done: 'bg-emerald-500',
+        failed: 'bg-red-500',
+      };
+
+      function Chip({ children, active, onClick }) {
+        return (
+          <button
+            onClick={onClick}
+            className={`px-3 py-1 rounded-full text-xs font-medium border transition ${
+              active ? 'bg-lime-400 text-black border-lime-400' : 'bg-zinc-900 border-zinc-700 hover:border-zinc-500'
+            }`}
+          >
+            {children}
+          </button>
+        );
+      }
+
+      function App() {
+        const [source, setSource] = useState('');
+        const [images, setImages] = useState(4);
+        const [videos, setVideos] = useState(1);
+        const [imageTypes, setImageTypes] = useState([]);
+        const [videoTypes, setVideoTypes] = useState([]);
+        const [allImageTypes, setAllImageTypes] = useState([]);
+        const [allVideoTypes, setAllVideoTypes] = useState([]);
+        const [selImageTypes, setSelImageTypes] = useState({});
+        const [selVideoTypes, setSelVideoTypes] = useState({});
+        const [jobs, setJobs] = useState([]);
+        const [summary, setSummary] = useState({});
+        const [logs, setLogs] = useState([]);
+        const [running, setRunning] = useState(false);
+        const [loginState, setLoginState] = useState('unknown');
+        const logRef = useRef();
+
+        useEffect(() => {
+          window.api.defaults().then((d) => {
+            setAllImageTypes(d.imageTypes);
+            setAllVideoTypes(d.videoTypes);
+            setSelImageTypes(Object.fromEntries(d.imageTypes.map((t) => [t, true])));
+            setSelVideoTypes(Object.fromEntries(d.videoTypes.map((t) => [t, true])));
+          });
+          window.api.onLog((line) => setLogs((l) => [...l.slice(-500), line]));
+          window.api.onRunState(setRunning);
+          window.api.checkLogin().then((ok) => setLoginState(ok ? 'in' : 'out'));
+        }, []);
+
+        useEffect(() => {
+          if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+        }, [logs]);
+
+        // Poll queue status while running.
+        useEffect(() => {
+          if (!source) return;
+          const id = setInterval(() => {
+            window.api.getQueue(source).then(({ jobs, summary }) => {
+              setJobs(jobs);
+              setSummary(summary);
+            });
+          }, 2000);
+          return () => clearInterval(id);
+        }, [source]);
+
+        const opts = () => ({
+          images: Number(images),
+          videos: Number(videos),
+          imageTypes: allImageTypes.filter((t) => selImageTypes[t]),
+          videoTypes: allVideoTypes.filter((t) => selVideoTypes[t]),
+        });
+
+        const pickFolder = async () => {
+          const f = await window.api.pickFolder();
+          if (f) setSource(f);
+        };
+        const build = async () => {
+          if (!source) return;
+          const { jobs, summary } = await window.api.buildQueue(source, opts());
+          setJobs(jobs);
+          setSummary(summary);
+        };
+        const start = () => source && window.api.run(source, opts());
+        const login = async () => {
+          setLoginState('checking');
+          const r = await window.api.login();
+          setLoginState(r.ok ? 'in' : 'out');
+        };
+
+        const total = jobs.length;
+        const done = summary.done || 0;
+        const pct = total ? Math.round((done / total) * 100) : 0;
+
+        return (
+          <div className="max-w-6xl mx-auto p-6 space-y-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-lime-400 text-black grid place-items-center font-black">H</div>
+                <div>
+                  <h1 className="text-lg font-bold">Higgsfield Autopilot</h1>
+                  <p className="text-xs text-zinc-500">Store / folder → unlimited image & video generation</p>
+                </div>
+              </div>
+              <button
+                onClick={login}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold ${
+                  loginState === 'in' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-600' : 'bg-zinc-800 border border-zinc-700'
+                }`}
+              >
+                {loginState === 'in' ? '● Logged in' : loginState === 'checking' ? 'Opening Chrome…' : loginState === 'out' ? 'Log in to Higgsfield' : 'Checking…'}
+              </button>
+            </div>
+
+            {/* Source */}
+            <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 space-y-4">
+              <div className="flex gap-2">
+                <input
+                  value={source}
+                  onChange={(e) => setSource(e.target.value)}
+                  placeholder="https://store.com   or   a folder of images"
+                  className="flex-1 bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm outline-none focus:border-lime-400"
+                />
+                <button onClick={pickFolder} className="px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-sm hover:border-zinc-500">
+                  Pick folder
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-6 text-sm">
+                <label className="flex items-center gap-2">
+                  Images / product
+                  <input type="number" min="0" max="6" value={images} onChange={(e) => setImages(e.target.value)}
+                    className="w-16 bg-zinc-950 border border-zinc-700 rounded px-2 py-1" />
+                </label>
+                <label className="flex items-center gap-2">
+                  Videos / product
+                  <input type="number" min="0" max="2" value={videos} onChange={(e) => setVideos(e.target.value)}
+                    className="w-16 bg-zinc-950 border border-zinc-700 rounded px-2 py-1" />
+                </label>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-xs uppercase tracking-wide text-zinc-500">Image styles</div>
+                <div className="flex flex-wrap gap-2">
+                  {allImageTypes.map((t) => (
+                    <Chip key={t} active={selImageTypes[t]} onClick={() => setSelImageTypes((s) => ({ ...s, [t]: !s[t] }))}>{t}</Chip>
+                  ))}
+                </div>
+                <div className="text-xs uppercase tracking-wide text-zinc-500 pt-2">Video styles (Seedance 2.0 · 7s · 720p)</div>
+                <div className="flex flex-wrap gap-2">
+                  {allVideoTypes.map((t) => (
+                    <Chip key={t} active={selVideoTypes[t]} onClick={() => setSelVideoTypes((s) => ({ ...s, [t]: !s[t] }))}>{t}</Chip>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button onClick={build} className="px-4 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-sm hover:border-zinc-500">
+                  Build queue
+                </button>
+                <button onClick={start} disabled={running || loginState !== 'in'}
+                  className="px-5 py-2 rounded-lg bg-lime-400 text-black font-semibold text-sm disabled:opacity-40">
+                  {running ? 'Running…' : 'Start generating'}
+                </button>
+                <button onClick={() => window.api.openOutput(source)} className="px-4 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-sm hover:border-zinc-500">
+                  Open output
+                </button>
+              </div>
+              {loginState === 'out' && (
+                <p className="text-xs text-amber-400">Log in to Higgsfield first (button top-right). A CAPTCHA may appear during runs — solve it in the automation window and it resumes automatically.</p>
+              )}
+            </div>
+
+            {/* Progress */}
+            {total > 0 && (
+              <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium">{done}/{total} done · {pct}%</span>
+                  <span className="flex gap-3 text-xs text-zinc-400">
+                    {Object.entries(summary).map(([k, v]) => (
+                      <span key={k} className="flex items-center gap-1">
+                        <span className={`w-2 h-2 rounded-full ${STATUS_COLORS[k] || 'bg-zinc-500'}`} />{k} {v}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+                <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+                  <div className="h-full bg-lime-400 transition-all" style={{ width: pct + '%' }} />
+                </div>
+                <div className="max-h-52 overflow-y-auto text-xs divide-y divide-zinc-800/60">
+                  {jobs.map((j) => (
+                    <div key={j.id} className="flex items-center gap-2 py-1.5">
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_COLORS[j.status] || 'bg-zinc-500'}`} />
+                      <span className="text-zinc-400 shrink-0">{j.kind}/{j.type}</span>
+                      <span className="truncate flex-1">{j.productTitle}</span>
+                      {j.error && <span className="text-red-400 truncate max-w-[40%]">{j.error}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Log */}
+            <div className="bg-black border border-zinc-800 rounded-2xl p-4">
+              <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">Live log</div>
+              <div ref={logRef} className="h-48 overflow-y-auto font-mono text-[11px] leading-relaxed text-zinc-400 whitespace-pre-wrap">
+                {logs.map((l, i) => (
+                  <div key={i} className={l.includes('VERIFICATION') ? 'text-amber-400' : l.includes('✓') ? 'text-emerald-400' : l.includes('✗') || l.includes('ERROR') ? 'text-red-400' : ''}>{l}</div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+  </body>
+</html>

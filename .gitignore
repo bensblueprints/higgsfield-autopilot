@@ -1,0 +1,8 @@
+node_modules/
+.profile/
+data/
+output/
+errors/
+release/
+*.log
+build/icon.png
